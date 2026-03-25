@@ -17,7 +17,7 @@ class CheckCoverageGaps extends Command
 {
     public function handle(IcsService $icsService): void
     {
-        $screens = Screen::whereNotNull('notification_email')->get();
+        $screens = Screen::query()->whereNotNull('notification_email')->get();
 
         foreach ($screens as $screen) {
             $this->checkScreen($screen, $icsService);
