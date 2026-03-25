@@ -1,3 +1,68 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Commands
+
+```bash
+# Start all dev services (server, queue, logs, vite) concurrently
+composer run dev
+
+# Run tests (clears config, checks lint, runs Pest)
+composer run test
+
+# Run tests only
+php artisan test --compact
+
+# Run a single test
+php artisan test --compact --filter=TestName
+
+# Lint (fix)
+vendor/bin/pint --dirty --format agent
+
+# Lint (check only)
+composer run lint:check
+
+# Build frontend assets
+npm run build
+```
+
+## Architecture
+
+A door display app for boarding house masters. The database is SQLite (`database/database.sqlite`). Served by Herd at `http://frbdoor.test`.
+
+### Core concept
+
+Each **Screen** (identified by a URL slug, e.g. `/screen/frb`) shows what the master is currently doing. Content priority:
+1. **Manual entry** (heading + optional subheading, with start/end times) — takes priority
+2. **Calendar event** — fetches ICS from Google Calendar, displays the event's **Location** field as the heading (title is hidden for privacy)
+3. **Default** — "In School" (configurable per screen)
+
+### Models
+- `Screen` — slug, name, ics_url, default_heading, default_subheading, notification_email, belongs to User
+- `ManualEntry` — heading, subheading, starts_at, ends_at (nullable = ongoing), belongs to Screen
+
+### Key files
+- `app/Services/IcsService.php` — fetches + caches ICS (15 min), parses with `sabre/vobject`, returns Location for current time
+- `app/Console/Commands/CheckCoverageGaps.php` — runs every 5 min, emails master if display will have no coverage in 15 min
+- `app/Notifications/CoverageGapAlert.php` — the gap alert email
+
+### Livewire SFC components (in `resources/views/components/`)
+- `⚡screen-display.blade.php` — the public display, polls every 60s with `wire:poll.60s.keep-alive`
+- `⚡auth/login.blade.php` — login form
+- `⚡admin/dashboard.blade.php` — manage manual entries, ICS URL, default text, alert email
+
+### Routes
+- `GET /screen/{slug}` — public display (no auth)
+- `GET /login` — login page (guest middleware)
+- `GET /admin` — admin dashboard (auth middleware)
+
+### Seeding / setup
+Run `php artisan db:seed` to create the initial user (`frb@example.com` / `password`) and screen (`frb`). Update credentials in `database/seeders/ScreenSeeder.php` before deploying.
+
+### Gap alert scheduling
+`routes/console.php` schedules `screens:check-gaps` every 5 minutes. Requires a cron entry: `* * * * * php /path/to/artisan schedule:run`
+
 <laravel-boost-guidelines>
 === foundation rules ===
 
