@@ -16,7 +16,7 @@ The screen refreshes itself every minute, so you never need to reload it.
 
 ---
 
-## For the Master
+## For the Staff Member
 
 You control what the display shows from a private admin panel. There are three ways content can appear, in order of priority:
 
