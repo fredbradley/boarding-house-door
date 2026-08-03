@@ -15,6 +15,13 @@ new class extends Component
         return Screen::where('slug', $this->slug)->first();
     }
 
+    public function refreshCalendar(): void
+    {
+        if ($this->screen) {
+            app(IcsService::class)->bustCache($this->screen);
+        }
+    }
+
     /**
      * @return array{heading: string, subheading: string|null, source: string}
      */
@@ -64,7 +71,7 @@ new class extends Component
     @if($this->screen)
         {{-- Main content --}}
         <div class="text-center w-full max-w-3xl">
-            <p class="text-slate-400 font-medium tracking-widest uppercase mb-6" style="font-size: clamp(1rem, 2.5vw, 1.5rem)">
+            <p wire:click="refreshCalendar" class="text-slate-400 font-medium tracking-widest uppercase mb-6" style="font-size: clamp(1rem, 2.5vw, 1.5rem)">
                 Where is {{ $this->screen->name }}?
             </p>
             <h1 class="text-white font-bold tracking-tight leading-none mb-8" style="font-size: clamp(3.5rem, 10vw, 7rem)">

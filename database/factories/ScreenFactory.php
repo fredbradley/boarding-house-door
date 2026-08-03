@@ -3,6 +3,7 @@
 namespace Database\Factories;
 
 use App\Models\Screen;
+use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
@@ -18,7 +19,13 @@ class ScreenFactory extends Factory
     public function definition(): array
     {
         return [
-            //
+            'user_id' => User::factory(),
+            'slug' => fake()->unique()->slug(2),
+            'name' => fake()->name(),
+            'ics_url' => null,
+            'default_heading' => 'In School',
+            'default_subheading' => null,
+            'notification_email' => fake()->safeEmail(),
         ];
     }
 }
