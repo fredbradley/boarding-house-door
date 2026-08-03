@@ -13,4 +13,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/admin', fn () => view('admin.dashboard'))->name('admin.dashboard');
 });
 
-Route::view('/', 'welcome')->name('home');
+Route::get('/', function() {
+return redirect('screen/frb');
+})->name('home');
+//Route::view('/', 'welcome')->name('home');
