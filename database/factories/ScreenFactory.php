@@ -19,7 +19,6 @@ class ScreenFactory extends Factory
     public function definition(): array
     {
         return [
-            'user_id' => User::factory(),
             'slug' => fake()->unique()->slug(2),
             'name' => fake()->name(),
             'ics_url' => null,
@@ -27,5 +26,14 @@ class ScreenFactory extends Factory
             'default_subheading' => null,
             'notification_email' => fake()->safeEmail(),
         ];
+    }
+
+    public function configure(): static
+    {
+        return $this->afterCreating(function (Screen $screen): void {
+            if ($screen->users()->doesntExist()) {
+                $screen->users()->attach(User::factory()->create());
+            }
+        });
     }
 }

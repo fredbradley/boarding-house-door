@@ -39,7 +39,7 @@ Each **Screen** (identified by a URL slug, e.g. `/screen/frb`) shows what the ma
 3. **Default** — "In School" (configurable per screen)
 
 ### Models
-- `Screen` — slug, name, ics_url, default_heading, default_subheading, notification_email, belongs to User
+- `Screen` — slug, name, ics_url, default_heading, default_subheading, notification_email, belongs to many Users (and vice versa) via the `screen_user` pivot table
 - `ManualEntry` — heading, subheading, starts_at, ends_at (nullable = ongoing), belongs to Screen
 
 ### Key files

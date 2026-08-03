@@ -19,15 +19,16 @@ class ScreenSeeder extends Seeder
             ]
         );
 
-        Screen::query()->firstOrCreate(
+        $screen = Screen::query()->firstOrCreate(
             ['slug' => 'frb'],
             [
-                'user_id' => $user->id,
                 'name' => 'FRB',
                 'default_heading' => 'In School',
                 'default_subheading' => 'Where else?',
                 'notification_email' => $user->email,
             ]
         );
+
+        $screen->users()->syncWithoutDetaching([$user->id]);
     }
 }

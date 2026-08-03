@@ -6,7 +6,7 @@ use Carbon\CarbonInterface;
 use Database\Factories\ScreenFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Screen extends Model
@@ -15,7 +15,6 @@ class Screen extends Model
     use HasFactory;
 
     protected $fillable = [
-        'user_id',
         'slug',
         'name',
         'ics_url',
@@ -24,9 +23,9 @@ class Screen extends Model
         'notification_email',
     ];
 
-    public function user(): BelongsTo
+    public function users(): BelongsToMany
     {
-        return $this->belongsTo(User::class);
+        return $this->belongsToMany(User::class);
     }
 
     public function manualEntries(): HasMany

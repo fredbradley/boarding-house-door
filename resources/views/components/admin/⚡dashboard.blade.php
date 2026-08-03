@@ -2,15 +2,21 @@
 
 use App\Models\ManualEntry;
 use App\Models\Screen;
+use App\Models\User;
 use App\Services\IcsService;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Str;
 use Livewire\Attributes\Computed;
+use Livewire\Attributes\Url;
 use Livewire\Attributes\Validate;
 use Livewire\Component;
 
 new class extends Component
 {
+    #[Url(as: 'screen')]
+    public ?int $screenId = null;
+
     // ── Add entry form ────────────────────────────────────────────────────
 
     #[Validate('required|string|max:100')]
@@ -45,25 +51,63 @@ new class extends Component
     #[Validate('nullable|email|max:255')]
     public string $notificationEmail = '';
 
+    // ── New screen form ────────────────────────────────────────────────────
+
+    public bool $creatingScreen = false;
+
+    #[Validate('required|string|max:100')]
+    public string $newScreenName = '';
+
+    // ── Share screen form ──────────────────────────────────────────────────
+
+    public bool $sharingScreen = false;
+
+    #[Validate('required|email')]
+    public string $shareEmail = '';
+
     public function mount(): void
     {
-        $screen = $this->screen;
-
-        if ($screen) {
-            $this->icsUrl = $screen->ics_url ?? '';
-            $this->defaultHeading = $screen->default_heading;
-            $this->defaultSubheading = $screen->default_subheading ?? '';
-            $this->notificationEmail = $screen->notification_email ?? '';
-        }
+        $this->hydrateSettingsForms();
 
         $this->startsAt = now()->format('Y-m-d\TH:i');
         $this->endsAt = now()->addHour()->format('Y-m-d\TH:i');
     }
 
+    private function hydrateSettingsForms(): void
+    {
+        $screen = $this->screen;
+
+        $this->icsUrl = $screen?->ics_url ?? '';
+        $this->defaultHeading = $screen?->default_heading ?? 'In School';
+        $this->defaultSubheading = $screen?->default_subheading ?? '';
+        $this->notificationEmail = $screen?->notification_email ?? '';
+        $this->editingIcs = false;
+        $this->editingSettings = false;
+        $this->sharingScreen = false;
+    }
+
+    #[Computed]
+    public function screens()
+    {
+        return Auth::user()?->screens()->orderBy('name')->get() ?? collect();
+    }
+
     #[Computed]
     public function screen(): ?Screen
     {
-        return Auth::user()?->screens()->first();
+        $screens = $this->screens;
+
+        if ($this->screenId && $screen = $screens->firstWhere('id', $this->screenId)) {
+            return $screen;
+        }
+
+        return $screens->first();
+    }
+
+    #[Computed]
+    public function screenUsers()
+    {
+        return $this->screen?->users()->orderBy('name')->get() ?? collect();
     }
 
     #[Computed]
@@ -73,6 +117,72 @@ new class extends Component
             ->where(fn ($q) => $q->whereNull('ends_at')->orWhere('ends_at', '>', now()))
             ->orderBy('starts_at')
             ->get() ?? collect();
+    }
+
+    public function selectScreen(int $screenId): void
+    {
+        $this->screenId = $screenId;
+
+        unset($this->screen, $this->screenUsers, $this->upcomingEntries);
+
+        $this->hydrateSettingsForms();
+    }
+
+    public function createScreen(): void
+    {
+        $this->validate([
+            'newScreenName' => 'required|string|max:100',
+        ]);
+
+        $slug = Str::slug($this->newScreenName);
+        $slug = Screen::query()->where('slug', $slug)->exists() ? $slug.'-'.Str::random(4) : $slug;
+
+        $screen = Screen::create([
+            'slug' => $slug,
+            'name' => $this->newScreenName,
+        ]);
+
+        $screen->users()->attach(Auth::id());
+
+        $this->newScreenName = '';
+        $this->creatingScreen = false;
+
+        unset($this->screens);
+
+        $this->selectScreen($screen->id);
+    }
+
+    public function shareScreen(): void
+    {
+        $this->validate([
+            'shareEmail' => 'required|email',
+        ]);
+
+        $user = User::where('email', $this->shareEmail)->first();
+
+        if (! $user) {
+            $this->addError('shareEmail', 'No user found with that email.');
+
+            return;
+        }
+
+        $this->screen?->users()->syncWithoutDetaching($user->id);
+
+        $this->shareEmail = '';
+        $this->sharingScreen = false;
+
+        unset($this->screenUsers);
+    }
+
+    public function removeUser(int $userId): void
+    {
+        if ($userId === Auth::id()) {
+            return;
+        }
+
+        $this->screen?->users()->detach($userId);
+
+        unset($this->screenUsers);
     }
 
     public function addEntry(): void
@@ -149,7 +259,7 @@ new class extends Component
     <div class="max-w-2xl mx-auto px-4 py-10">
 
         {{-- Header --}}
-        <div class="flex items-center justify-between mb-10">
+        <div class="flex items-center justify-between mb-6">
             <div>
                 <h1 class="text-xl font-bold">Door Display Admin</h1>
                 @if($this->screen)
@@ -164,8 +274,39 @@ new class extends Component
             </button>
         </div>
 
+        {{-- Screen switcher --}}
+        <div class="flex items-center gap-2 flex-wrap mb-10">
+            @foreach($this->screens as $s)
+                <button wire:key="screen-tab-{{ $s->id }}" wire:click="selectScreen({{ $s->id }})"
+                        class="text-sm font-medium rounded-lg px-3 py-1.5 transition-colors
+                            {{ $this->screen?->id === $s->id ? 'bg-indigo-600 text-white' : 'bg-slate-900 text-slate-400 hover:text-slate-200' }}">
+                    {{ $s->name }}
+                </button>
+            @endforeach
+            <button wire:click="$toggle('creatingScreen')"
+                    class="text-sm font-medium rounded-lg px-3 py-1.5 border border-dashed border-slate-700 text-slate-500 hover:text-slate-300 hover:border-slate-600 transition-colors">
+                {{ $creatingScreen ? 'Cancel' : '+ New screen' }}
+            </button>
+        </div>
+
+        @if($creatingScreen)
+            <section class="mb-10">
+                <form wire:submit="createScreen" class="bg-slate-900 rounded-xl p-5 space-y-3">
+                    <div>
+                        <label class="block text-xs text-slate-400 mb-1">Screen name</label>
+                        <input type="text" wire:model="newScreenName" placeholder="e.g. Matron's House"
+                               class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                        @error('newScreenName') <p class="text-red-400 text-xs mt-1">{{ $message }}</p> @enderror
+                    </div>
+                    <button type="submit" class="bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium rounded-lg px-4 py-2 transition-colors">
+                        Create screen
+                    </button>
+                </form>
+            </section>
+        @endif
+
         @if(!$this->screen)
-            <p class="text-slate-400">No screen found for your account. Please contact the administrator.</p>
+            <p class="text-slate-400">No screen found for your account. Create one above to get started.</p>
         @else
 
         {{-- Add entry form --}}
@@ -213,7 +354,7 @@ new class extends Component
             <h2 class="text-sm font-semibold text-slate-400 uppercase tracking-widest mb-4">Scheduled Entries</h2>
 
             @forelse($this->upcomingEntries as $entry)
-                <div class="bg-slate-900 rounded-xl p-4 mb-3 flex items-start justify-between gap-4
+                <div wire:key="entry-{{ $entry->id }}" class="bg-slate-900 rounded-xl p-4 mb-3 flex items-start justify-between gap-4
                     {{ $entry->isActive() ? 'ring-1 ring-indigo-500' : '' }}">
                     <div>
                         @if($entry->isActive())
@@ -270,7 +411,7 @@ new class extends Component
         </section>
 
         {{-- Screen settings --}}
-        <section>
+        <section class="mb-10">
             <div class="flex items-center justify-between mb-4">
                 <h2 class="text-sm font-semibold text-slate-400 uppercase tracking-widest">Default & Alerts</h2>
                 <button wire:click="$toggle('editingSettings')" class="text-xs text-indigo-400 hover:text-indigo-300 transition-colors">
@@ -314,6 +455,46 @@ new class extends Component
                     </p>
                 </div>
             @endif
+        </section>
+
+        {{-- Shared access --}}
+        <section>
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-sm font-semibold text-slate-400 uppercase tracking-widest">Shared Access</h2>
+                <button wire:click="$toggle('sharingScreen')" class="text-xs text-indigo-400 hover:text-indigo-300 transition-colors">
+                    {{ $sharingScreen ? 'Cancel' : 'Add person' }}
+                </button>
+            </div>
+
+            @if($sharingScreen)
+                <form wire:submit="shareScreen" class="bg-slate-900 rounded-xl p-5 space-y-3 mb-3">
+                    <div>
+                        <label class="block text-xs text-slate-400 mb-1">Email address</label>
+                        <input type="email" wire:model="shareEmail" placeholder="colleague@example.com"
+                               class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                        @error('shareEmail') <p class="text-red-400 text-xs mt-1">{{ $message }}</p> @enderror
+                    </div>
+                    <button type="submit" class="bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium rounded-lg px-4 py-2 transition-colors">
+                        Share screen
+                    </button>
+                </form>
+            @endif
+
+            @foreach($this->screenUsers as $user)
+                <div wire:key="user-{{ $user->id }}" class="bg-slate-900 rounded-xl p-4 mb-3 flex items-center justify-between gap-4">
+                    <div>
+                        <p class="font-medium text-white text-sm">{{ $user->name }}</p>
+                        <p class="text-slate-500 text-xs">{{ $user->email }}</p>
+                    </div>
+                    @if($user->id !== Auth::id())
+                        <button wire:click="removeUser({{ $user->id }})"
+                                wire:confirm="Remove this person's access?"
+                                class="text-slate-600 hover:text-red-400 text-sm transition-colors shrink-0">
+                            ✕
+                        </button>
+                    @endif
+                </div>
+            @endforeach
         </section>
 
         @endif
